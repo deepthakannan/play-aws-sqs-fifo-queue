@@ -13,20 +13,7 @@ namespace play_aws_sqs_fifo_queue
     {
         public static void Main(string[] args)
         {
-            var sqsConfig = new AmazonSQSConfig();
-            sqsConfig.ServiceURL = "http://sqs.us-east-1.amazonaws.com";
-
-            var sharedFile = new SharedCredentialsFile();
-            CredentialProfile credentialProfile;
-            if(!sharedFile.TryGetProfile("default", out credentialProfile))
-            {
-                throw new Exception($"AWS default profile not found");
-            }
-            var secretKey = credentialProfile.Options.SecretKey;
-            var accessKey = credentialProfile.Options.AccessKey;
-            
-            string token = credentialProfile.Options.Token;
-            var sqsClient = new AmazonSQSClient(accessKey, secretKey, token, sqsConfig);
+            AmazonSQSClient sqsClient = CreateSQSClient();
             string myQueueURL = null;
             foreach (var queueResponse in sqsClient.ListQueuesAsync("404").Result.QueueUrls)
             {
@@ -34,26 +21,45 @@ namespace play_aws_sqs_fifo_queue
                 Console.WriteLine(queueResponse);
             }
 
-            foreach(var group in GetGroups(10))
+            foreach (var group in GetGroups(10))
             {
-                foreach(var index in Enumerable.Range(1, 10))
+                foreach (var index in Enumerable.Range(1, 10))
                 {
                     PostToQueue(sqsClient, myQueueURL, group, index);
                 }
             }
         }
 
+        private static AmazonSQSClient CreateSQSClient()
+        {
+            var sqsConfig = new AmazonSQSConfig();
+            sqsConfig.ServiceURL = "http://sqs.us-east-1.amazonaws.com";
+
+            var sharedFile = new SharedCredentialsFile();
+            CredentialProfile credentialProfile;
+            if (!sharedFile.TryGetProfile("default", out credentialProfile))
+            {
+                throw new Exception($"AWS default profile not found");
+            }
+            var secretKey = credentialProfile.Options.SecretKey;
+            var accessKey = credentialProfile.Options.AccessKey;
+
+            string token = credentialProfile.Options.Token;
+            return new AmazonSQSClient(accessKey, secretKey, token, sqsConfig);
+        }
+
         private static void PostToQueue(AmazonSQSClient sqsClient, string myQueueURL, string group, int messageIndex)
         {
             SendMessageRequest sendMessageRequest = new SendMessageRequest();
             sendMessageRequest.QueueUrl = myQueueURL;
-            var message = $"TestMessage {messageIndex} for group {group}";
+            var message = $"TestMessage {messageIndex} of {group}";
             sendMessageRequest.MessageBody = message;
+            sendMessageRequest.MessageAttributes["MessageGroupId"] = new MessageAttributeValue() { DataType = "String", StringValue = group };
             sendMessageRequest.MessageGroupId = group;
             var response = sqsClient.SendMessageAsync(sendMessageRequest).Result;
             if (response.HttpStatusCode == HttpStatusCode.OK)
             {
-                Console.WriteLine($"Successfully posted {message} to {group}. MessageId {response.MessageId}");
+                Console.WriteLine($"Successfully posted {message} with MessageGroupId {group}. MessageId {response.MessageId}");
             }
             else
             {
