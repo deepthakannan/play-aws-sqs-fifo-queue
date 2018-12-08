@@ -4,7 +4,7 @@ using Amazon.SQS.Model;
 
 namespace play_aws_sqs_fifo_queue
 {
-    public class Program
+    public class Producer
     {
         public static void Main(string[] args)
         {
