@@ -1,0 +1,25 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "buildproducer",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/producer/producer.csproj"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "buildconsumer",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/consumer/consumer.csproj"
+            ],
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}
