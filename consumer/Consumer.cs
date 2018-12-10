@@ -22,32 +22,38 @@ namespace play_aws_sqs_fifo_queue
     {
         private const string MessageGroupId = "MessageGroupId";
         private static List<Task> consumers = new List<Task>();
-        public static void StartConsumers(int countPerQueue, IEnumerable<string> queues)
+        private static CancellationTokenSource consumerCancellationTokenSource = new CancellationTokenSource();
+
+        public static void StartConsumers(int countPerQueue, IEnumerable<string> queues, int expectedMessageCount)
         {
             Reset();
+            Store.SetExpectedMessagesAndStartTimer(expectedMessageCount);
 
+            consumerCancellationTokenSource = new CancellationTokenSource();
+            CancellationToken ct = consumerCancellationTokenSource.Token;
             foreach(var queue in queues)
             {
                 foreach(var consumer in CreateConsumers(countPerQueue))
                 {
                     consumers.Add(Task.Factory.StartNew(() => {
-                        Consume(consumer, queue);
+                        Consume(consumer, queue, ct);
                     }));
                 }
             }
         }
 
-        private static void Reset()
+        public static void Reset()
         {
             StopConsumers();
         }
 
         private static void StopConsumers()
         {
-            Parallel.ForEach(consumers, (consumer) => {
+            consumerCancellationTokenSource.Cancel();
+            consumers.ForEach((consumer) => {
                 try
                 {
-                    consumer.Dispose();
+                    consumer.Wait();
                 }
                 catch(Exception ex)
                 {
@@ -88,10 +94,10 @@ namespace play_aws_sqs_fifo_queue
             return new AmazonSQSClient(accessKey, secretKey, token, sqsConfig);
         }
 
-        private static void Consume(string consumer, string queue)
+        private static void Consume(string consumer, string queue, CancellationToken ct)
         {
             var sqsClient = CreateSQSClient();
-            while(true)
+            while(!ct.IsCancellationRequested)
             {
                 var receiveMessageRequest = new ReceiveMessageRequest();
                 receiveMessageRequest.QueueUrl = queue;
@@ -105,20 +111,16 @@ namespace play_aws_sqs_fifo_queue
                         ProcessAndAck(consumer, queue, sqsClient, message);
                     }
                 }
-                else
-                {
-                    Thread.Sleep(1000);
-                }
             }
         }
 
         private static void ProcessAndAck(string consumer, string myQueueURL, AmazonSQSClient sqsClient, Message message)
         {
             Store.AddMessageToStore(message, consumer);
+
             Console.WriteLine($"{consumer} processing {message.Body}");
             var deleteResponse = sqsClient.DeleteMessageAsync(myQueueURL, message.ReceiptHandle).Result;
             Console.WriteLine(deleteResponse.HttpStatusCode == HttpStatusCode.OK ? $"message {message.MessageId} acked" : $"message {message.MessageId} not acked");
-            Thread.Sleep(50);
         }
 
         public static IEnumerable<string> CreateConsumers(int count)

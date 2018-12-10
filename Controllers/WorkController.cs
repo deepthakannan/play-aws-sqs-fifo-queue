@@ -18,21 +18,22 @@ namespace play_aws_sqs_fifo_queue.Controllers
     {
         public int NoOfConsumers;
         public IEnumerable<string> QueueUrls;
+        public int ExpectedMessageCount;
     }
 
     [Route("api/[controller]")]
     public class WorkController : Controller
     {
         [HttpPost("[action]")]
-        public ProducerResult QueueMessages([FromBody] ProducerWork work)
+        public ProducerResult ProducerWork([FromBody] ProducerWork work)
         {
             return Producer.Produce(work.NoOfGroups, work.NoOfMessagesPerGroup, work.QueueUrls);
         }
 
         [HttpPost("[action]")]
-        public void ConsumeQueuedMessages([FromBody] ConsumerWork work)
+        public void ConsumerWork([FromBody] ConsumerWork work)
         {
-            Consumer.StartConsumers(work.NoOfConsumers, work.QueueUrls);
+            Consumer.StartConsumers(work.NoOfConsumers, work.QueueUrls, work.ExpectedMessageCount);
         }
 
         [HttpGet("[action]")]
@@ -48,7 +49,7 @@ namespace play_aws_sqs_fifo_queue.Controllers
         }
 
         [HttpPut("[action]")]
-        public CreateQueueResponse CreateFifoQueue([FromQuery] string name)
+        public CreateQueueResponse FifoQueue([FromQuery] string name)
         {
             if(string.IsNullOrWhiteSpace(name))
             {
@@ -57,7 +58,7 @@ namespace play_aws_sqs_fifo_queue.Controllers
             return Queues.CreateFifoQueue(name);
         }
 
-         [HttpDelete("[action]")]
+        [HttpDelete("FifoQueue")]
         public HttpStatusCode DeleteFifoQueue([FromQuery] string queueUrl)
         {
             if(string.IsNullOrWhiteSpace(queueUrl))
@@ -67,10 +68,16 @@ namespace play_aws_sqs_fifo_queue.Controllers
             return Queues.DeleteQueue(queueUrl);
         }
 
-        [HttpDelete()]
+        [HttpDelete("[action]")]
         public void MessageStore()
         {
             Store.Reset();
+        }
+
+        [HttpDelete("Consumers")]
+        public void StopConsumers()
+        {
+            Consumer.Reset();
         }
     }
 }
