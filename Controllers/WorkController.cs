@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,12 +11,13 @@ namespace play_aws_sqs_fifo_queue.Controllers
     {
         public int NoOfGroups;
         public int NoOfMessagesPerGroup;
+        public List<string> QueueUrls;
     }
 
     public class ConsumerWork
     {
         public int NoOfConsumers;
-        public IEnumerable<string> Queues;
+        public IEnumerable<string> QueueUrls;
     }
 
     [Route("api/[controller]")]
@@ -24,13 +26,13 @@ namespace play_aws_sqs_fifo_queue.Controllers
         [HttpPost("[action]")]
         public ProducerResult QueueMessages([FromBody] ProducerWork work)
         {
-            return Producer.Produce(work.NoOfGroups, work.NoOfMessagesPerGroup);
+            return Producer.Produce(work.NoOfGroups, work.NoOfMessagesPerGroup, work.QueueUrls);
         }
 
         [HttpPost("[action]")]
         public void ConsumeQueuedMessages([FromBody] ConsumerWork work)
         {
-            Consumer.StartConsumers(work.NoOfConsumers, work.Queues);
+            Consumer.StartConsumers(work.NoOfConsumers, work.QueueUrls);
         }
 
         [HttpGet("[action]")]
@@ -43,6 +45,26 @@ namespace play_aws_sqs_fifo_queue.Controllers
         public IEnumerable<string> FifoQueues()
         {
             return Queues.GetQueues();
+        }
+
+        [HttpPut("[action]")]
+        public CreateQueueResponse CreateFifoQueue([FromQuery] string name)
+        {
+            if(string.IsNullOrWhiteSpace(name))
+            {
+                throw new Exception("Queue name cannot be empty");
+            }
+            return Queues.CreateFifoQueue(name);
+        }
+
+         [HttpDelete("[action]")]
+        public HttpStatusCode DeleteFifoQueue([FromQuery] string queueUrl)
+        {
+            if(string.IsNullOrWhiteSpace(queueUrl))
+            {
+                throw new Exception("Queue name cannot be empty");
+            }
+            return Queues.DeleteQueue(queueUrl);
         }
 
         [HttpDelete()]

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -11,6 +12,11 @@ using Amazon.SQS.Model;
 
 namespace play_aws_sqs_fifo_queue
 {
+    public class CreateQueueResponse
+    {
+        public HttpStatusCode StatusCode { get; set; }
+        public string QueueUrl { get; set; }
+    }
     public static class Queues
     {
         private const string MessageGroupId = "MessageGroupId";
@@ -27,10 +33,23 @@ namespace play_aws_sqs_fifo_queue
             }
         }
 
-        public static HttpStatusCode DeleteQueues(string queueUrl)
+        public static HttpStatusCode DeleteQueue(string queueUrl)
         {
             var sqsClient = CreateSQSClient();
             return sqsClient.DeleteQueueAsync(queueUrl).Result.HttpStatusCode;
+        }
+
+        public static CreateQueueResponse CreateFifoQueue(string queueName)
+        {
+            var createQueueRequest = new CreateQueueRequest();
+            createQueueRequest.QueueName = queueName.EndsWith(".fifo", true, CultureInfo.InvariantCulture) ? queueName : queueName + ".fifo";
+            var attrs = new Dictionary<string, string>();
+            attrs.Add(QueueAttributeName.ContentBasedDeduplication, "true");
+            attrs.Add(QueueAttributeName.FifoQueue, "true");
+            attrs.Add(QueueAttributeName.ReceiveMessageWaitTimeSeconds, "20");
+            createQueueRequest.Attributes = attrs;
+            var response = CreateSQSClient().CreateQueueAsync(createQueueRequest).Result;
+            return new CreateQueueResponse() { QueueUrl = response.QueueUrl, StatusCode = response.HttpStatusCode };
         }
 
         private static AmazonSQSClient CreateSQSClient()
