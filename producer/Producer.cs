@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using Amazon.Runtime;
@@ -9,10 +10,17 @@ using Amazon.SQS.Model;
 
 namespace play_aws_sqs_fifo_queue
 {
+    public class ProducerResult
+    {
+        public long ElapsedMilliseconds;
+        public IEnumerable<string> Groups;
+        public long MessagesPosted;
+    }
     public class Producer
     {
-        public static void Main(string[] args)
+        public static ProducerResult Produce(int noOfMessageGroups = 10, int messagesPerGroup = 10)
         {
+            Stopwatch stopwatch = Stopwatch.StartNew();
             AmazonSQSClient sqsClient = CreateSQSClient();
             string myQueueURL = null;
             foreach (var queueResponse in sqsClient.ListQueuesAsync("404").Result.QueueUrls)
@@ -20,14 +28,17 @@ namespace play_aws_sqs_fifo_queue
                 myQueueURL = queueResponse;
                 Console.WriteLine(queueResponse);
             }
-
-            foreach (var group in GetGroups(10))
+            var groups = GetGroups(noOfMessageGroups);
+            long messagesCount = 0;
+            foreach (var group in GetGroups(noOfMessageGroups))
             {
-                foreach (var index in Enumerable.Range(1, 10))
+                foreach (var index in Enumerable.Range(1, messagesPerGroup))
                 {
                     PostToQueue(sqsClient, myQueueURL, group, index);
+                    messagesCount++;
                 }
             }
+            return new ProducerResult() { ElapsedMilliseconds = stopwatch.ElapsedMilliseconds, Groups = groups, MessagesPosted = messagesCount };
         }
 
         private static AmazonSQSClient CreateSQSClient()

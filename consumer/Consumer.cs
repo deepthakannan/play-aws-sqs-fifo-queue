@@ -11,31 +11,49 @@ using Amazon.SQS.Model;
 
 namespace play_aws_sqs_fifo_queue
 {
-
-    public class Consumer
+    public class ConsumerResponse
+    {
+        public long ElapsedMilliSeconds;
+        public long MessagesConsumed;
+        public IEnumerable<string> GroupsFound;
+        public IEnumerable<string> GroupsOrderingIssuesFound;
+    }
+    public static class Consumer
     {
         private const string MessageGroupId = "MessageGroupId";
-
-        public static void Main(string[] args)
+        private static List<Task> consumers = new List<Task>();
+        public static void StartConsumers(int countPerQueue, IEnumerable<string> queues)
         {
-            ConcurrentDictionary<string, List<string>> messageStore = new ConcurrentDictionary<string, List<string>>();
-            var sqsClient = CreateSQSClient();
-            string myQueueURL = null;
-            foreach(var queueResponse in sqsClient.ListQueuesAsync("404").Result.QueueUrls)
-            {
-                myQueueURL = queueResponse;
-                Console.WriteLine(queueResponse);
-            }
+            Reset();
 
-            foreach(var consumer in CreateConsumers(10))
+            foreach(var queue in queues)
             {
-                Task.Factory.StartNew(() => {
-                    Consume(consumer, myQueueURL, messageStore);
-                });
+                foreach(var consumer in CreateConsumers(countPerQueue))
+                {
+                    consumers.Add(Task.Factory.StartNew(() => {
+                        Consume(consumer, queue);
+                    }));
+                }
             }
-            Task.Delay(20000).Wait();
-            DumpMessageStore(messageStore);
-            Console.ReadLine();
+        }
+
+        private static void Reset()
+        {
+            StopConsumers();
+        }
+
+        private static void StopConsumers()
+        {
+            Parallel.ForEach(consumers, (consumer) => {
+                try
+                {
+                    consumer.Dispose();
+                }
+                catch(Exception ex)
+                {
+                    // suppress any exception
+                }
+            });
         }
 
         private static void DumpMessageStore(ConcurrentDictionary<string, List<string>> messageStore)
@@ -70,13 +88,13 @@ namespace play_aws_sqs_fifo_queue
             return new AmazonSQSClient(accessKey, secretKey, token, sqsConfig);
         }
 
-        private static void Consume(string consumer, string myQueueURL, ConcurrentDictionary<string, List<string>> messageStore)
+        private static void Consume(string consumer, string queue)
         {
             var sqsClient = CreateSQSClient();
             while(true)
             {
                 var receiveMessageRequest = new ReceiveMessageRequest();
-                receiveMessageRequest.QueueUrl = myQueueURL;
+                receiveMessageRequest.QueueUrl = queue;
                 receiveMessageRequest.AttributeNames = new List<string>() { MessageGroupId };
 
                 var receiveMessageResponse = sqsClient.ReceiveMessageAsync(receiveMessageRequest).Result;
@@ -84,7 +102,7 @@ namespace play_aws_sqs_fifo_queue
                 {
                     foreach(var message in receiveMessageResponse.Messages)
                     {
-                        ProcessAndAck(consumer, myQueueURL, sqsClient, message, messageStore);
+                        ProcessAndAck(consumer, queue, sqsClient, message);
                     }
                 }
                 else
@@ -94,26 +112,13 @@ namespace play_aws_sqs_fifo_queue
             }
         }
 
-        private static void ProcessAndAck(string consumer, string myQueueURL, AmazonSQSClient sqsClient, Message message, ConcurrentDictionary<string, List<string>> messageStore)
+        private static void ProcessAndAck(string consumer, string myQueueURL, AmazonSQSClient sqsClient, Message message)
         {
-            AddMessageToStore(message, messageStore);
+            Store.AddMessageToStore(message, consumer);
             Console.WriteLine($"{consumer} processing {message.Body}");
             var deleteResponse = sqsClient.DeleteMessageAsync(myQueueURL, message.ReceiptHandle).Result;
             Console.WriteLine(deleteResponse.HttpStatusCode == HttpStatusCode.OK ? $"message {message.MessageId} acked" : $"message {message.MessageId} not acked");
             Thread.Sleep(50);
-        }
-
-        private static void AddMessageToStore(Message message, ConcurrentDictionary<string, List<string>> messageStore)
-        {
-            var messageGroupId = message.Attributes[MessageGroupId];
-            messageStore.AddOrUpdate(messageGroupId, (value) =>
-            {
-                return new List<string>() { message.Body };
-            }, (value, messages) =>
-            {
-                messages.Add(message.Body);
-                return messages;
-            });
         }
 
         public static IEnumerable<string> CreateConsumers(int count)

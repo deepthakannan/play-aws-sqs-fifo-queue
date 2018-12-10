@@ -2,6 +2,16 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "build",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/play-aws-sqs-fifo-queue.csproj"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
             "label": "buildproducer",
             "command": "dotnet",
             "type": "process",
