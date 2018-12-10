@@ -18,25 +18,27 @@ namespace play_aws_sqs_fifo_queue
     }
     public class Producer
     {
-        public static ProducerResult Produce(int noOfMessageGroups = 10, int messagesPerGroup = 10)
+        public static ProducerResult Produce(int noOfMessageGroups, int messagesPerGroup, List<string> queueUrls)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             AmazonSQSClient sqsClient = CreateSQSClient();
-            string myQueueURL = null;
-            foreach (var queueResponse in sqsClient.ListQueuesAsync("404").Result.QueueUrls)
-            {
-                myQueueURL = queueResponse;
-                Console.WriteLine(queueResponse);
-            }
             var groups = GetGroups(noOfMessageGroups);
             long messagesCount = 0;
+            int groupIndex = 0;
+            var queueCount = queueUrls.Count;
+            if(queueCount == 0)
+            {
+                throw new Exception("Provide at least one queue");
+            }
             foreach (var group in GetGroups(noOfMessageGroups))
             {
+                var queueURL = queueUrls.ElementAt(groupIndex % queueCount);
                 foreach (var index in Enumerable.Range(1, messagesPerGroup))
                 {
-                    PostToQueue(sqsClient, myQueueURL, group, index);
+                    PostToQueue(sqsClient, queueURL, group, index);
                     messagesCount++;
                 }
+                groupIndex++;
             }
             return new ProducerResult() { ElapsedMilliseconds = stopwatch.ElapsedMilliseconds, Groups = groups, MessagesPosted = messagesCount };
         }
@@ -63,7 +65,7 @@ namespace play_aws_sqs_fifo_queue
         {
             SendMessageRequest sendMessageRequest = new SendMessageRequest();
             sendMessageRequest.QueueUrl = myQueueURL;
-            var message = $"TestMessage {messageIndex} of {group}";
+            var message = $"Message {messageIndex} of {group} in {myQueueURL}";
             sendMessageRequest.MessageBody = message;
             sendMessageRequest.MessageAttributes["MessageGroupId"] = new MessageAttributeValue() { DataType = "String", StringValue = group };
             sendMessageRequest.MessageGroupId = group;
