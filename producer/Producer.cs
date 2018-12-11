@@ -1,8 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using Amazon.Runtime;
 using Amazon.Runtime.CredentialManagement;
 using Amazon.SQS;
@@ -23,24 +26,29 @@ namespace play_aws_sqs_fifo_queue
             Stopwatch stopwatch = Stopwatch.StartNew();
             AmazonSQSClient sqsClient = CreateSQSClient();
             var groups = GetGroups(noOfMessageGroups);
-            long messagesCount = 0;
+            int messagesCount = 0;
             int groupIndex = 0;
             var queueCount = queueUrls.Count;
             if(queueCount == 0)
             {
                 throw new Exception("Provide at least one queue");
             }
+            List<Task> tasks = new List<Task>();
+            ConcurrentBag<string> groupsPostedTo = new ConcurrentBag<string>();
             foreach (var group in GetGroups(noOfMessageGroups))
             {
-                var queueURL = queueUrls.ElementAt(groupIndex % queueCount);
-                foreach (var index in Enumerable.Range(1, messagesPerGroup))
-                {
-                    PostToQueue(sqsClient, queueURL, group, index);
-                    messagesCount++;
-                }
-                groupIndex++;
+                var queueURL = queueUrls.ElementAt(groupIndex++ % queueCount);
+                var task = Task.Factory.StartNew(() => {
+                    foreach(var index in Enumerable.Range(1, messagesPerGroup))
+                    {
+                        PostToQueue(sqsClient, queueURL, group, index, ref messagesCount);
+                    }
+                    groupsPostedTo.Add(group);
+                });
+                tasks.Add(task);
             }
-            return new ProducerResult() { ElapsedMilliseconds = stopwatch.ElapsedMilliseconds, Groups = groups, MessagesPosted = messagesCount };
+            Task.WhenAll(tasks).Wait();
+            return new ProducerResult() { ElapsedMilliseconds = stopwatch.ElapsedMilliseconds, Groups = groupsPostedTo.OrderBy(grp => grp), MessagesPosted = messagesCount };
         }
 
         private static AmazonSQSClient CreateSQSClient()
@@ -61,11 +69,11 @@ namespace play_aws_sqs_fifo_queue
             return new AmazonSQSClient(accessKey, secretKey, token, sqsConfig);
         }
 
-        private static void PostToQueue(AmazonSQSClient sqsClient, string myQueueURL, string group, int messageIndex)
+        private static void PostToQueue(AmazonSQSClient sqsClient, string myQueueURL, string group, int messageIndex, ref int messagesCount)
         {
             SendMessageRequest sendMessageRequest = new SendMessageRequest();
             sendMessageRequest.QueueUrl = myQueueURL;
-            var message = $"Message {messageIndex} of {group} in {myQueueURL}";
+            var message = $"Message {messageIndex} of {group} in {myQueueURL}. {Guid.NewGuid()}";
             sendMessageRequest.MessageBody = message;
             sendMessageRequest.MessageAttributes["MessageGroupId"] = new MessageAttributeValue() { DataType = "String", StringValue = group };
             sendMessageRequest.MessageGroupId = group;
@@ -73,10 +81,11 @@ namespace play_aws_sqs_fifo_queue
             if (response.HttpStatusCode == HttpStatusCode.OK)
             {
                 Console.WriteLine($"Successfully posted {message} with MessageGroupId {group}. MessageId {response.MessageId}");
+                Interlocked.Increment(ref messagesCount);
             }
             else
             {
-                PostToQueue(sqsClient, myQueueURL, group, messageIndex);
+                PostToQueue(sqsClient, myQueueURL, group, messageIndex, ref messagesCount);
             }
         }
 

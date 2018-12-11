@@ -18,6 +18,11 @@ namespace play_aws_sqs_fifo_queue
         public IEnumerable<string> GroupsFound;
         public IEnumerable<string> GroupsOrderingIssuesFound;
     }
+
+    public class Consumers
+    {
+        public int ActiveConsumers;
+    }
     public static class Consumer
     {
         private const string MessageGroupId = "MessageGroupId";
@@ -42,24 +47,27 @@ namespace play_aws_sqs_fifo_queue
             }
         }
 
-        public static void Reset()
+        public static Consumers Reset()
         {
-            StopConsumers();
+            return StopConsumers();
         }
 
-        private static void StopConsumers()
+        private static Consumers StopConsumers()
         {
             consumerCancellationTokenSource.Cancel();
-            consumers.ForEach((consumer) => {
+            Parallel.ForEach(consumers, (consumer) => {
                 try
                 {
                     consumer.Wait();
+                    consumer.Dispose();
                 }
                 catch(Exception ex)
                 {
                     // suppress any exception
                 }
             });
+            consumers.RemoveAll(task => task.Status == TaskStatus.RanToCompletion);
+            return new Consumers() { ActiveConsumers = consumers.Count  };
         }
 
         private static void DumpMessageStore(ConcurrentDictionary<string, List<string>> messageStore)

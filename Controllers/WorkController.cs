@@ -36,48 +36,28 @@ namespace play_aws_sqs_fifo_queue.Controllers
             Consumer.StartConsumers(work.NoOfConsumers, work.QueueUrls, work.ExpectedMessageCount);
         }
 
-        [HttpGet("[action]")]
-        public StoreStats ProcessedMessages([FromQuery] bool includeMessageDetails)
+        [HttpGet("MessageStore/ProcessedMessages")]
+        public StoreStats GetProcessedMessages([FromQuery] bool includeMessageDetails)
         {
             return Store.Stats(includeMessageDetails);
         }
 
-        [HttpGet("[action]")]
-        public IEnumerable<string> FifoQueues()
-        {
-            return Queues.GetQueues();
-        }
-
-        [HttpPut("[action]")]
-        public CreateQueueResponse FifoQueue([FromQuery] string name)
-        {
-            if(string.IsNullOrWhiteSpace(name))
-            {
-                throw new Exception("Queue name cannot be empty");
-            }
-            return Queues.CreateFifoQueue(name);
-        }
-
-        [HttpDelete("FifoQueue")]
-        public HttpStatusCode DeleteFifoQueue([FromQuery] string queueUrl)
-        {
-            if(string.IsNullOrWhiteSpace(queueUrl))
-            {
-                throw new Exception("Queue name cannot be empty");
-            }
-            return Queues.DeleteQueue(queueUrl);
-        }
-
-        [HttpDelete("[action]")]
-        public void MessageStore()
+        [HttpDelete("MessageStore/ProcessedMessages")]
+        public void ResetMessageStore()
         {
             Store.Reset();
         }
 
         [HttpDelete("Consumers")]
-        public void StopConsumers()
+        public Consumers StopConsumers()
         {
-            Consumer.Reset();
+            return Consumer.Reset();
+        }
+
+        [HttpPut("ExpectedMessages")]
+        public void SetExpectedMessages([FromQuery] int expectedMessageCount)
+        {
+            Store.SetExpectedMessagesAndStartTimer(expectedMessageCount);
         }
     }
 }
